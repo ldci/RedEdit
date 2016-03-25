@@ -1,7 +1,7 @@
 #! /usr/local/bin/rebol
 REBOL [
-	Title: "Red Cross-Platform Code Editor 1.3"
-	File: "editor.r"
+	Title: "Red Editor 2.0"
+	File: "editor.2.0.r"
 	Author: "Francois Jouen(LDCI)"
 	Version: 2.0
 	Date: "03-24-16"
@@ -58,7 +58,6 @@ set 'appDir what-dir
 sourceDir: join appDir "template/"
 docDir: join appDir "doc/"
 binaryDir: join appDir "binaries/"
-redExec: join appDir "binaries/red"
 empty: join sourceDir "basic.reds"
 helperMaker: join docDir "makedoc2.r" 
 helperTxt: join docDir "red-system-specs.txt"
@@ -74,17 +73,11 @@ if not exists? helperMaker [
 if not exists? helper  [do/args helperMaker helperTxt]
 change-dir appDir
 
-targets: ["Darwin" "Linux" "Windows" "MSDOS" "Syllable" "Android"]
-;compilation default options
-debug: "No"
-Verbose: "No"
-Verbose_Level: 1
 
 
-;compilerArgs: join " -v " [ Verbose_Level " -g -t "]
 
 ccok: false
-fName: fPath: sFname: "";
+fName: fPath: sFname: fType: "";
 
 count: tnLines: nChar: tnPages: tnWords: tnParas: tnFiles: tnChars: nPage: 0
 nLine: pIndex: nLinePage: tnPages: nChar: 1
@@ -118,28 +111,27 @@ windowStyles: stylize [
         	edge [size: 0x0] para [ origin: 6x2]
 ]
 
- 
- 	
-
+; Cross compilation
+targets: ["Darwin" "Linux" "Linux-ARM" "RPi" "Windows" "MSDOS" "Syllable" "FreeBSD" "Android" "Android-x86"]
 getOs: does [
 	switch system/version/4 [
-		3 [os: "Windows" compilerTarget: fourth targets] ; msdos console by defaut for tests
-		2 [os: "Mac OS X" compilerTarget: first targets]
-		4 [os: "Linux"  compilerTarget: second targets]
-		5 [os: "BeOS" compilerTarget: fifth targets]
-		7 [os: "NetBSD" compilerTarget: second targets]
-		9 [os: "OpenBSD" compilerTarget: second targets]
-		10 [os: "SunSolaris" compilerTarget: second targets]
+		3 [os: "Windows" compilerTarget: targets/5 redExec: join appDir "binaries/windows/red.exe"] ; 
+		2 [os: "Mac OS X" compilerTarget: targets/1 redExec: join appDir "binaries/osx/red"]
+		4 [os: "Linux"  compilerTarget: targets/2 redExec: join appDir "binaries/linux/red"]
 	]
 	return os
 ]
  	
 GetOs
+; default compiler arguments
+verboseLevel: 1
+maxVerbose: 2
+fileType: "red"
 compilerArgs: join "-c -t " compilerTarget
 
+; Qui Application
 quitRequested: does [
 	if (confirm/with "Really quit Red Editor ?" ["Yes" "No"]) [quit]
-	
 ]
 
 ; compilation
@@ -155,14 +147,17 @@ redCompile: does [
 			buffer: copy ""
 			cmdstr: join compilerArgs [" " sFName]
 			call/show/output reduce [redExec " " cmdstr] buffer
-	 		console/text: join "Script:" buffer 
 			unview/only fl 
 			ccok: true 
 			] 
 			[unview/only fl]
 	
 	 
-	 if ccok [ append console/text "Compilation, Linking and Buiding are done :)"]
+	 either ccok [ 
+	 	console/text: join "Script:" buffer 
+	 	append console/text "Compilation, Linking and Buiding are done :)"
+	 ]
+	 [append console/text "Error in file processing "]
 	 sl2/data: 1        
 	 scroll-para console sl2
 	 show [console sl2]
@@ -175,7 +170,6 @@ redRun: does [
 	; compilation OK?
 	change-dir to-file fPath
 	either ccok [
-				
 				tmp: parse sFName "."
 				exec: first tmp
 				; with mac call open allows a new terminal
@@ -332,6 +326,8 @@ getKey: func [akey]
 			
 			]
 ]
+
+
 readFile: does [
 		clear current/text
 		clear lcount/text
@@ -340,6 +336,9 @@ readFile: does [
 		set [path file] split-path fname
 		fPath: path
 		sFname: file
+		tmp: parse sFName "."
+		fileType: second tmp
+		either fileType = "red" [maxVerbose: 2] [maxVerbose: 10]
 		SBar1/text: to-local-file fname
 		sl1/data: 0
 		updateScroller false
@@ -392,7 +391,7 @@ newFile: does [
 
 openFile: does [
 	ccok: false
-	afile: request-file/filter "*.reds"
+	afile: request-file/filter "*.red"
 	if not none? afile [	
 		fname: first afile
 		readFile
@@ -441,7 +440,6 @@ closeFile: does  [
 
 
 findText: func [s /local atext] [
-	
 	either all [
 		not atext: find next sv*/caret s
 		not atext: find current/text s] 
@@ -515,10 +513,10 @@ aboutBox: layout [
     backcolor 101.98.95
 	space 0x15
 	across
-	app-info 200x48 "Red Cross-Platform Code Editor" center wrap
+	app-info 200x48 "Red Editor Version 2.0" center wrap
 	return
 	credits: app-info center 200x60 wrap
-	"Brought to the Red Language Community by ldci"
+	"Brought to the Red Language Community by F. Jouen (ldci)"
 	return
  	pad 80 app-btn "OK" [hide-popup]
 ]
@@ -534,24 +532,31 @@ styles windowStyles
 	return
 	app-info 80 "Target" tgr: drop-down data targets [compilerTarget: face/text]
 	return
-	app-info 80 "Debugger" drop-down "No" "Yes" [debug: face/text]
+	app-info 80 "Debugger" 
+	app-info 30 "Yes" r1: radio of 'group1 
+	app-info 30 "No" r2: radio of 'group1 
 	return
-	app-info 80 "Verbose" drop-down "No" "Yes" [verbose: face/text]
+	app-info 80 "Verbose"
+	app-info 30 "Yes" r3: radio of 'group2 
+	app-info 30 "No" r4: radio of 'group2 
 	return
-	app-info 80 "Level" sl0: app-sld 80x24 [vl/text: 1 + (sl0/data * 4)  show vl
-	verbose_level: to-integer vl/text]
-	vl: app-status 15x24 "1"
+	app-info 80 "Level" sl0: app-sld 70x24 [vl/text: to-integer (1 + (sl0/data * maxVerbose))  show vl
+	verboseLevel: to-integer vl/text]
+	vl: app-status 25x24 "1"
+	return
+	app-info 165  "Dynamic Library" cb: check 
 	
 	return
 	
  	pad 90 app-btn "OK" [
- 	        clear compilerArgs
- 	        if verbose = "Yes" [append compilerArgs join " -v " verbose_level ]
- 	        if debug = "Yes" [append compilerArgs " -g"]
- 	        append compilerArgs join " -t " compilerTarget
- 			;compilerArgs: join " -v " [ Verbose_Level " -g -t "]
+ 	        ;clear compilerArgs
+ 	        compilerArgs: copy "-c "
+ 	        if r1/data  [append compilerArgs "-d "]
+ 	        if r3/data [append compilerArgs join "-v " [verboseLevel " "]]
+ 	        if cb/data [ append compilerArgs "-dlib "]
+ 	        append compilerArgs join "-t " compilerTarget
+ 	       ;print [compilerArgs]
  			hide-popup] 
-	
 ]
 
 
@@ -592,13 +597,13 @@ mainWin: layout [
 	b8:  app-btn 60 keycode [#"^p"]  "Compile" [if tnFiles > 0 [redCompile]]
 	b9:  app-btn 60  keycode [#"^r"] "Run" [if tnFiles > 0 [redRun]]
 	
-	b10:  app-btn 50 "Help" [browse/only helper]
+	b10:  app-btn 50 "Help" [if error? try [browse/only helper] [alert "Unsupported browser"]]
 	b11:  app-btn 50"About" [ if error? try [inform/title aboutBox "About"] [inform aboutBox]]                     
 	                     
 	b12:  app-btn 50  "Quit" [quitRequested]
 	at 200x35 bx: box  as-pair (35) (lineHeight + 4) effect [draw lcursor] 
 	;as-pair (xmax - 256) (lineHeight + 4) effect [draw lcursor] 
-	do [tgr/text: compilerTarget show tgr]
+	do [tgr/text: compilerTarget show tgr r1/data: false r2/data: true r3/data: false r4/data: true]
 ] 
 
 
