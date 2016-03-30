@@ -44,26 +44,25 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.}
 
 sv*: system/view
 ssize: sv*/screen-face/size
-xmax: ssize/1 - 300
-ymax: ssize/2 - 300
+;xmax: ssize/1 - 300
+;ymax: ssize/2 - 300
 
 xmax: 1024
-ymax: 600; 768
+ymax: 768; adapt accordng to your screen
 y1: ((ymax / 3) * 2)
 y2: (ymax / 3)
 
-
+; required diectories
 set 'appDir what-dir
-
 sourceDir: join appDir "template/"
 docDir: join appDir "doc/"
 binaryDir: join appDir "binaries/"
-empty: join sourceDir "basic.reds"
+empty: join sourceDir "basic.red"
 helperMaker: join docDir "makedoc2.r" 
 helperTxt: join docDir "red-system-specs.txt"
 helper: join docDir "red-system-specs.html"
 
-
+; get help maker from Rebol website
 if not exists? helperMaker [ 
 	flash "Downloading makedoc2.r..."
 	read-thru/to http://www.rebol.org/library/scripts/makedoc2.r helperMaker
@@ -73,12 +72,10 @@ if not exists? helperMaker [
 if not exists? helper  [do/args helperMaker helperTxt]
 change-dir appDir
 
-
-
-
+; our variables
 ccok: false
-fName: fPath: sFname: fType: "";
 
+fName: fPath: sFname: fType: "";
 count: tnLines: nChar: tnPages: tnWords: tnParas: tnFiles: tnChars: nPage: 0
 nLine: pIndex: nLinePage: tnPages: nChar: 1
 fontSize: 14
@@ -94,13 +91,13 @@ bxs: to-pair reduce [cx cy]
 line-list: make sv*/line-info []
 
 ; to highlight our text cursor
-tr: 128
+tr: 127
 cl: to-tuple reduce [101 98 95 tr]
 lCursor: copy [ fill-pen cl
 				pen none
 				box 0x0 bxs ]
  
- 
+; some specific styles that can be changed 
 windowStyles: stylize [
         app-btn: btn 0.0.0 font [colors: [255.255.255 255.255.255]] bold
         app-sld: slider 0.0.0 255.255.255 edge [size: 1x1]
@@ -111,13 +108,13 @@ windowStyles: stylize [
         	edge [size: 0x0] para [ origin: 6x2]
 ]
 
-; Cross compilation
+; Cross compilation OS
 targets: ["Darwin" "Linux" "Linux-ARM" "RPi" "Windows" "MSDOS" "Syllable" "FreeBSD" "Android" "Android-x86"]
 getOs: does [
 	switch system/version/4 [
-		3 [os: "Windows" compilerTarget: targets/5 redExec: join appDir "binaries/windows/red.exe"] ; 
-		2 [os: "Mac OS X" compilerTarget: targets/1 redExec: join appDir "binaries/osx/red"]
-		4 [os: "Linux"  compilerTarget: targets/2 redExec: join appDir "binaries/linux/red"]
+		3 [os: "Windows" compilerTarget: targets/5 redExec: "C:\Program Files (x86)\red\red.exe" ] ; join appDir "binaries/windows/red.exe"
+		2 [os: "Mac OS X" compilerTarget: targets/1 redExec: "/usr/local/bin/red"] ;redExec: join appDir "binaries/osx/red"
+		4 [os: "Linux"  compilerTarget: targets/2 redExec: "/usr/local/bin/red" ] ;join appDir "binaries/linux/red"
 	]
 	return os
 ]
@@ -129,12 +126,12 @@ maxVerbose: 2
 fileType: "red"
 compilerArgs: join "-c -t " compilerTarget
 
-; Qui Application
+; Quit Application
 quitRequested: does [
 	if (confirm/with "Really quit Red Editor ?" ["Yes" "No"]) [quit]
 ]
 
-; compilation
+; code compilation
 redCompile: does [
 	ccok: false
 	clear console/text
@@ -146,18 +143,17 @@ redCompile: does [
 			fl: flash str wait 0.1
 			buffer: copy ""
 			cmdstr: join compilerArgs [" " sFName]
-			call/show/output reduce [redExec " " cmdstr] buffer
+		    call/show/output reduce [redExec " " cmdstr] buffer
 			unview/only fl 
 			ccok: true 
 			] 
 			[unview/only fl]
-	
+	 		either ccok [ 
+	 			console/text: buffer 
+	 			append console/text "Compilation, Linking and Buiding are done :)"
+	 		]
+	 		[append console/text "Error in file processing "]
 	 
-	 either ccok [ 
-	 	console/text: join "Script:" buffer 
-	 	append console/text "Compilation, Linking and Buiding are done :)"
-	 ]
-	 [append console/text "Error in file processing "]
 	 sl2/data: 1        
 	 scroll-para console sl2
 	 show [console sl2]
@@ -165,7 +161,7 @@ redCompile: does [
 ]
 
 
-; execute
+; execute code
 redRun: does [
 	; compilation OK?
 	change-dir to-file fPath
@@ -177,49 +173,69 @@ redRun: does [
 				if error? try [
 								str: join "Loading " exec
 								fl: flash str wait 0.1
-								call/show reduce [prog]
+								call/show reduce [prog] 
 								unview/only fl] 
 				[unview/only fl]
-	] [Alert "File not compilated!"]
+	] [Alert "File must be compiled first!"]
 	change-dir appDir
 ]
 
+; call Red interpreter
+redInterpret: does [
+	change-dir to-file fPath
+	clear console/text
+	console/line-list: none
+	show console
+		if error? try [
+				str: join "Running " fname
+				rbuffer: copy ""
+				fl: flash str wait 0.1
+				either cb2/data 
+					[call/show/output reduce [join redExec[ " " sFName]] rbuffer]
+					[call/show reduce [join redExec[ " " sFName]]]
+				unview/only fl] 
+		[unview/only fl]
+	if cb2/data [
+		console/text: rbuffer
+		show console
+	]
+	change-dir appDir
+]
 
-
-
+; number of pages in file
 calculatePages: does [
-	clear lcount/text
+	clear lCount/text
 	;calculate line height
 	lineHeight: fontSize + second (current/para/margin) 
-	
 	;calculate total number of lines
 	tmp: (second (size-text current) / lineHeight) - 2
-	for count 0 tmp 1 [append lcount/text join count + 1 newline]
-	append lcount/text tmp + 2
+	for count 0 tmp 1 [append lCount/text join count + 1 newline]
+	append lCount/text tmp + 2
 	tnLines: tmp + 1
 	;get number of line per page
 	nLinePage: round (current/size/y / lineHeight) 
-	
 	;get total number of pages 
 	tnPages: round tnLines / nLinePage
 	tmp: remainder tnLines nLinePage
 	if tmp  <> 0 [tnPages: tnPages + 1]
 	tnChars: to-integer length? current/text
 	tnPages: tnPages + 1
-	show [Lcount]
+	show [lCount]
 ]
 
+; multi-file udpate
 updateText: does [
 	buffer: copy current/text
 	if (tnFiles > 0) [poke tmpFiles pIndex buffer]
 ]
 
+; basic information about the file
 getFileInfo: does [
 	 calculatePages
 	 nPage: 0
 	 current/text: head current/text
-	 lcount/text: head lcount/text
-	 current/line-list: lcount/line-list: none
+	 lCount/text: head lCount/text
+	 current/line-list: lCount/line-list: none
 	 ; get some information about file
 	 tnChars: length? current/text
 	 tnWords: parse current/text none
@@ -230,38 +246,33 @@ getFileInfo: does [
 	 sbar3/text: join "Ln " [nLine + 1 ", " line-list/num-chars " chars"]
 	 sbar4/text: nPage + 1
 	 sbar5/text: tnPages
-	 show [Lcount SBar2 Sbar3 SBar4 Sbar5 bx]
+	 show [lCount SBar2 Sbar3 SBar4 Sbar5 bx]
 	 focus current
 	 sv*/caret: head current/text
-	 show [current Fliste]
-	
-
+	 show [current fList]
 ]
+; for vertical scroller
 updateScroller: func [lines] [
 	if lines [either sl1/data = 0 [nPage 0 nline: 0] 
 		[nLine: to-integer sl1/data * (tnLines) 
 		nPage: to-integer sl1/data * (tnPages - 1)]
 	]
-	
 	if error? try [line-list/num-chars: 0 result: textinfo current line-list nLine] [result: none]
 	sbar3/text: join "Ln " [nLine + 1 ", " line-list/num-chars " chars"]
 	sbar4/text: nPage + 1
 	sbar5/text: tnPages
-	
 	y: round (second (current/size) - lineHeight * sl1/data) 
 	limite: current/size/y - (lineHeight + 4)
 	if y >= limite  [y: limite]  
-	bx/offset: lcount/offset + as-pair 0 y
-	
-	scroll-para lcount sl1
+	bx/offset: lCount/offset + as-pair 0 y
+	scroll-para lCount sl1
 	scroll-para current sl1
-	;current/para/scroll/y: lcount/para/scroll/y
-	show [ bx lcount sl1 sbar3 sbar4 sbar5 current]
+	;current/para/scroll/y: lCount/para/scroll/y
+	show [ bx lCount sl1 sbar3 sbar4 sbar5 current]
 	focus sl1
-	 
 ]
 
-
+; Keyboard events
 getKey: func [akey]
 [
 	if tnChars > 0 [
@@ -270,68 +281,56 @@ getKey: func [akey]
 	cc: pick current/text nChar
 	calculatePages
 	updateText
-	
-			if equal? akey 'end  [sl1/data: 1 
+	if equal? akey 'end  [sl1/data: 1 
 					nLine: tnLines nChar: tmp nPage: tnPages - 1 
-					updateScroller false] 
-			        
-				
-			if equal? akey 'home  [sl1/data: 0  
+					updateScroller false] 	
+	if equal? akey 'home  [sl1/data: 0  
 					nLine: 0 nChar: 1 nPage: 0
-					updateScroller false]
-					
-			if equal? akey 'page-down [
+					updateScroller false]		
+	if equal? akey 'page-down [
 					either nPage >= tnPages [npage: tnPages - 1] [nPage: nPage + 1]
 					nLine: nLine + nLinePage 
 					if (nLine > tnLines)  [nLine: tnLines]
 					sl1/data: nLine / tnLines
 					updateScroller false
-					]
-					
-			if equal? akey 'page-up [
+					]	
+	if equal? akey 'page-up [
 					either nPage <= 0 [nPage: 0] [nPage: nPage - 1]
 					nLine: nLine - nLinePage 
 					if (nLine <= 0)  [nLine: 0]
 					sl1/data: nLine / tnLines
 					updateScroller false
-					]
-					
-					
-			if equal? akey 'down [ 
+					]		
+	if equal? akey 'down [ 
 					nLine: nLine + 1
 					if (nLine > tnLines) [nLine: tnLines]
 					sl1/data: nLine / tnLines
 					updateScroller false
 					nLine2: mod nLine nLinePage
 				    if equal? nLine2 0 [nPage: nPage + 1]
-			]
-				
-			
-			
-			if equal? akey 'up [
+					]
+	if equal? akey 'up [
 					nLine: nLine - 1
 					if nLine <= 0 [nLine: 0 nPage: 1]
 					sl1/data: nLine / tnLines
 					updateScroller false
 					nLine2: mod nLine nLinePage
 					if equal? nLine2 0 [nPage: nPage - 1]
-			]
-			
-			if equal? akey 'right [
+					]
+	if equal? akey 'right [
 			 	cc: pick current/text nChar
-			]
-			if equal? akey 'left [
+				]
+	if equal? akey 'left [
 			 	cc: pick current/text nChar
-			]
-			
-			]
+				]
+	]
 ]
 
-
+;for loading or creating a new file
 readFile: does [
 		clear current/text
-		clear lcount/text
-		current/line-list: lcount/line-list: none
+		clear lCount/text
+		current/line-list: lCount/line-list: none
 		current/text: read to-file fname
 		set [path file] split-path fname
 		fPath: path
@@ -346,16 +345,17 @@ readFile: does [
 		show [SBar1 sl1 current]
 	
 ]
+
+; Save file routines
 saveFile: does [
 	if tnFiles > 0[
 	if (confirm/with join "Save File " [fName " ?"] ["Yes" "No"]) [write to-file fname current/text ]
-	]
-	
+	]	
 ]
 
 saveAsFile: does [
 	if tnFiles > 0[
-		afile: request-file/file/filter/save Fname "*.red"
+		afile: request-file/file/filter/save Fname ["*.red" "*.reds"]
 		if not none? afile 
 			[sfname: first afile write to-file sfname current/text 
 			fname: sfname
@@ -366,7 +366,7 @@ saveAsFile: does [
 	]
 ]
 
-
+; update file 
 updateRead: does [	
 	tnFiles: tnFiles + 1
 	pIndex: tnFiles	
@@ -374,12 +374,12 @@ updateRead: does [
 	append/only tmpFiles buffer
 	set [path file] split-path to-file afile
 	append tmpList afile
-	append Fliste/data file
-	append clear FListe/picked file
-	show [current Fliste]
+	append fList/data file
+	append clear fList/picked file
+	show [current fList]
 ]
 
-
+; create new file
 newFile: does [
 	ccok: false
 	afile: to-file empty
@@ -388,10 +388,10 @@ newFile: does [
 	updateRead 
 	getFileInfo
 ]
-
+;open existing file
 openFile: does [
 	ccok: false
-	afile: request-file/filter "*.red"
+	afile: request-file/filter ["*.red" "*.reds"]
 	if not none? afile [	
 		fname: first afile
 		readFile
@@ -400,16 +400,17 @@ openFile: does [
 		]	
 ]
 
+; multi-file selection
 selectFile: does [
 		clear current/text
-		clear lcount/text
+		clear lCount/text
 		buffer: pick tmpFiles pIndex 
 		current/text: copy buffer
 		set [path file] split-path fname
 		fPath: path
 		sFname: file
 		SBar1/text: to-local-file fname
-		current/line-list: lcount/line-list: none
+		current/line-list: lCount/line-list: none
 		sl1/data: 0
 		updateScroller false
 		nLine: nChar: 1
@@ -418,32 +419,32 @@ selectFile: does [
 		focus current
 		sv*/caret: head current/text
 ]
-
+; want to close?
 closeFile: does  [
 	if tnFiles > 0 [ 
-	if (confirm/with join "Close file " [fname " ?"]  ["Yes" "No"]) [
-	clear current/text
-	clear LCount/text
-	current/line-list: lcount/line-list: none
-	remove at tmpList pIndex
-	remove at tmpFiles pIndex
-	remove at FListe/data pIndex
-	tnFiles: tnFiles - 1
-	either tnFiles > 0 [
-	either tnFiles > 1 [pIndex: tnFiles] [ pIndex: 1]
-	FName: pick tmpList pIndex selectFile
-	append clear FListe/picked pick FListe/data pIndex 
-	] [hide bx]
-	show [current lcount FListe]]
-]
+		if (confirm/with join "Close file " [fname " ?"]  ["Yes" "No"]) [
+			clear current/text
+			clear lCount/text
+			current/line-list: lCount/line-list: none
+			remove at tmpList pIndex
+			remove at tmpFiles pIndex
+			remove at fList/data pIndex
+			tnFiles: tnFiles - 1
+			either tnFiles > 0 [
+			either tnFiles > 1 [pIndex: tnFiles] [ pIndex: 1]
+				FName: pick tmpList pIndex selectFile
+				append clear fList/picked pick fList/data pIndex 
+			] [hide bx]
+		show [current lCount fList]]
+		]
 ]
 
-
+; find text in text edit
 findText: func [s /local atext] [
 	either all [
-		not atext: find next sv*/caret s
-		not atext: find current/text s] 
-		[Alert join s " not found" unfocus return none  ]
+			atext: find next sv*/caret s
+			not atext: find current/text s] 
+			[Alert join s " not found" unfocus return none]
 		[
 		tmp: length? atext   
 		nChar: (tnChars - tmp) + 1
@@ -452,36 +453,34 @@ findText: func [s /local atext] [
 		sv*/highlight-end: skip sv*/highlight-start length? s
 		
 		xy: (caret-to-offset current atext) - current/para/scroll
-		lcount/para/scroll/y: current/para/scroll/y: second min 0x0 current/size / 2 - xy
+		lCount/para/scroll/y: current/para/scroll/y: second min 0x0 current/size / 2 - xy
 		
 		nLine: to-integer (xy/y / (fontSize + 2)) + 1
 		
 		ratio: nLine / tnLines
 		sl1/data: ratio
-		show [current lcount sl1]
+		show [current lCount sl1]
 		sbar3/text: join "Ln " [nLine ", Ch " nChar]
 		show SBar3
 		]
 ]
 
-
-
-
-resizeWindow: does [
-	xmax: MainWin/size/x 
-	ymax: MainWin/size/y
+; update screen 
+resizeWindow: func [asize [pair!]] [
+	xmax: asize/1 
+	ymax: asize/2
 	y1: ((ymax / 3) * 2)
 	y2: (ymax / 3) 
 	cadre/size/x: xmax
 	cadre/size/y: ymax
 	ToolBar/size/x: xmax
-	FListe/size/x: 190
-	FListe/size/y: y1 - 30
-	FListe/resize/y: y1 - 30
-	FListe/offset: 5x35
-	LCount/size/x: 40
-	Lcount/size/y: y1 - 30
-	LCount/Offset: 200x35
+	fList/size/x: 190
+	fList/size/y: y1 - 30
+	fList/resize/y: y1 - 30
+	fList/offset: 5x35
+	lCount/size/x: 40
+	lCount/size/y: y1 - 30
+	lCount/Offset: 200x35
 	Current/size/x: xmax - 256
 	Current/size/y: y1 - 30
 	Current/Offset: 235x35
@@ -504,10 +503,11 @@ resizeWindow: does [
 	cy: lineHeight + 4
 	bxs: to-pair reduce [cx cy]
 	bx/size/x: 35 bx/size/y: cy
-	show [ cadre Fliste ToolBar Lcount Current sl1 console sl2 SBar1 SBar2 SBar3 SBar4 SBar5 SBar6 SBar7 bx]
+	show [ cadre fList ToolBar lCount Current sl1 console sl2 SBar1 SBar2 SBar3 SBar4 SBar5 SBar6 SBar7 bx]
 	if tnFiles > 0 [show bx]
 ]
 
+; about
 aboutBox: layout [
 	styles windowStyles
     backcolor 101.98.95
@@ -521,14 +521,13 @@ aboutBox: layout [
  	pad 80 app-btn "OK" [hide-popup]
 ]
 
-
-
+; Compiler Options
 optionsBox: layout [
-styles windowStyles
+	styles windowStyles
     backcolor 101.98.95
 	space 5x15
 	across
-	app-info 200x24 "Red Compiler Options" center wrap
+	app-info 200x24 "Red Compiler Preferences" left wrap
 	return
 	app-info 80 "Target" tgr: drop-down data targets [compilerTarget: face/text]
 	return
@@ -544,22 +543,23 @@ styles windowStyles
 	verboseLevel: to-integer vl/text]
 	vl: app-status 25x24 "1"
 	return
-	app-info 165  "Dynamic Library" cb: check 
-	
+	app-info 165  "Dynamic Library" cb1: check 
 	return
-	
+	app-info 200x24 "Red Interpreter Preferences" left wrap
+	return
+	app-info 165 "Use RedEdit Console" cb2: check
+	return
  	pad 90 app-btn "OK" [
  	        ;clear compilerArgs
  	        compilerArgs: copy "-c "
  	        if r1/data  [append compilerArgs "-d "]
  	        if r3/data [append compilerArgs join "-v " [verboseLevel " "]]
- 	        if cb/data [ append compilerArgs "-dlib "]
+ 	        if cb1/data [ append compilerArgs "-dlib "]
  	        append compilerArgs join "-t " compilerTarget
- 	       ;print [compilerArgs]
  			hide-popup] 
 ]
 
-
+; GUI interface
 mainWin: layout [
  	styles windowStyles
 	across
@@ -567,8 +567,8 @@ mainWin: layout [
 	space 5x5
 	at 0x0 cadre: box as-pair xmax ymax snow frame  101.98.95
 	at 0x0 ToolBar: box as-pair xmax 30
-	at 5x35 FListe: text-list as-pair 190 (y1 - 30) black white  [pIndex: face/cnt FName: pick tmpList pIndex selectFile]
-	at 200x35 lcount: area as-pair 40 (y1 - 30) right white white font [size: fontSize]
+	at 5x35 fList: text-list as-pair 190 (y1 - 30) black white  [pIndex: face/cnt FName: pick tmpList pIndex selectFile]
+	at 200x35 lCount: area as-pair 40 (y1 - 30) right white white font [size: fontSize]
 	at 235x35 current: area as-pair (xmax - 256) (y1 - 30)  white white wrap font [size: fontSize]
 	at as-pair 235 + (xmax - 256) 35 sl1: app-sld as-pair 16 (y1 - 30) [if tnFiles > 0 [updateScroller true]]
 	space 0x0
@@ -587,20 +587,18 @@ mainWin: layout [
 	b1:  app-btn 55  keycode [#"^n"] "New" [newFile]
 	b2:  app-btn 55   keycode [#"^o"] "Open" [openFile]
 	b3:  app-btn 55 "Close" [closeFile]
-	b4:  app-btn 55 "Save" [saveFile]
+	b4:  app-btn 55 keycode [#"^s"] "Save" [saveFile]
 	b5:  app-btn 55 "Save as" [saveAsFile]
 	app-info 80 "Search for..."
 	qr: app-status 100x24 "Red" [unfocus focus current sv*/caret: head current/text]
 	b6:  app-btn 55 keycode [#"^f"] "Find" [if tnFiles > 0 [show current findText qr/text]]
-	
-	b7: app-btn 60 "Options" [if error? try [inform/title optionsBox "Compiler"] [inform optionsBox]]
-	b8:  app-btn 60 keycode [#"^p"]  "Compile" [if tnFiles > 0 [redCompile]]
+	b7: app-btn 80 "Preferences" [if error? try [inform/title optionsBox "RedEdit"] [inform optionsBox]]
+	b71: app-btn 65 keycode [#"^i"] "Interpret" [if tnFiles > 0 [redInterpret]]
+	b8:  app-btn 60 keycode [#"^p"]  "comPile" [if tnFiles > 0 [redCompile]]
 	b9:  app-btn 60  keycode [#"^r"] "Run" [if tnFiles > 0 [redRun]]
-	
 	b10:  app-btn 50 "Help" [if error? try [browse/only helper] [alert "Unsupported browser"]]
-	b11:  app-btn 50"About" [ if error? try [inform/title aboutBox "About"] [inform aboutBox]]                     
-	                     
-	b12:  app-btn 50  "Quit" [quitRequested]
+	b11:  app-btn 50"About" [ if error? try [inform/title aboutBox "About"] [inform aboutBox]]                                      
+	b12:  app-btn 50 keycode [#"^q"] "Quit" [quitRequested]
 	at 200x35 bx: box  as-pair (35) (lineHeight + 4) effect [draw lcursor] 
 	;as-pair (xmax - 256) (lineHeight + 4) effect [draw lcursor] 
 	do [tgr/text: compilerTarget show tgr r1/data: false r2/data: true r3/data: false r4/data: true]
@@ -611,16 +609,13 @@ center-face mainWin
 view/new/options mainWin [resize] 
 deflag-face current tabbed; permet les tabulations dans la visualisation
 hide bx 
-
-
-
+; our events 
 insert-event-func [
-		
 		switch event/type [
 			key          [getKey event/key]       	
 			time         [Sbar7/text: mold now/time show SBar7 calculatePages updateText]                 	
-			resize       [resizeWindow]
-        	maximize 	 []
+			resize       [resizeWindow MainWin/size]
+        	;maximize 	 [resizeWindow ssize]
         	;restore	 []
         	;scroll-line []
         	;scroll-nPage []
@@ -632,4 +627,4 @@ insert-event-func [
 
 do-events
 
-; keycode [#"^n"]
+

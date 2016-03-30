@@ -8,6 +8,20 @@ Mainly tested witn OSX and Windows.
 
 Of course, you can edit, compile, and run Red and Red/Sytem programs. 
 
+##Red 0.60 compatibilty
+03/30/2016
+
+Now compatible with Red 0.60 ! Thanks to Nénad and his team!
+
+Added: Interpret command. You can directly test red code in the editor. Thanks to Mike Parr for the suggestion. 
+
+Code can be tested either in Red console or in RedEdit console: see Preferences to activate RedEdit console.
+
+
+/samples directory includes now red and red/system basic samples
+
+Tested with Windows 10 and OSX 10.11.4.
+
 ##New Version 2.0
 
 03/25/2016
