@@ -75,7 +75,7 @@ change-dir appDir
 ; our variables
 ccok: false
 
-fName: fPath: sFname: fType: "";
+fName: fPath: sFname: fileType: "";
 count: tnLines: nChar: tnPages: tnWords: tnParas: tnFiles: tnChars: nPage: 0
 nLine: pIndex: nLinePage: tnPages: nChar: 1
 fontSize: 14
@@ -119,7 +119,7 @@ getOs: does [
 	return os
 ]
  	
-GetOs
+currentOS: GetOs
 ; default compiler arguments
 verboseLevel: 1
 maxVerbose: 2
@@ -136,24 +136,23 @@ redCompile: does [
 	ccok: false
 	clear console/text
 	console/line-list: none
+	console/text: join "Compiling " fname
 	show console
 	change-dir to-file fPath
+	wait 0.1
 	if error? try [
-			str: join "Compiling " fname
-			fl: flash str wait 0.1
 			buffer: copy ""
 			cmdstr: join compilerArgs [" " sFName]
+			show console
 		    call/show/output reduce [redExec " " cmdstr] buffer
-			unview/only fl 
 			ccok: true 
 			] 
-			[unview/only fl]
-	 		either ccok [ 
-	 			console/text: buffer 
-	 			append console/text "Compilation, Linking and Buiding are done :)"
-	 		]
-	 		[append console/text "Error in file processing "]
-	 
+			[ccok: false]
+	 either ccok [ 
+	 		append console/text buffer 
+	 		append console/text "Compilation, Linking and Buiding are done :)"
+	 ]
+	 [append console/text "Error in file processing "]
 	 sl2/data: 1        
 	 scroll-para console sl2
 	 show [console sl2]
@@ -161,22 +160,25 @@ redCompile: does [
 ]
 
 
-; execute code
+; execute compiled code
 redRun: does [
 	; compilation OK?
+	clear console/text
+	console/line-list: none
+	tmp: parse sFName "."
+	exec: first tmp
+	console/text: join "Loading " [exec newline]
+	; with mac and linux  "open" allows a new terminal
+	if currentOS = "Mac OS X" [prog: join "open " exec]
+	if currentOS = "Linux" [prog: join "open " exec]
+	; windows equivalent to "open"
+	if currentOS = "Windows" [append exec ".exe" prog: rejoin [{START ""} { "} exec {"}] ]
+	show console
+	wait 0.1
 	change-dir to-file fPath
-	either ccok [
-				tmp: parse sFName "."
-				exec: first tmp
-				; with mac call open allows a new terminal
-				either compilerTarget = "Darwin" [prog: join "open " exec] [prog: exec]
-				if error? try [
-								str: join "Loading " exec
-								fl: flash str wait 0.1
-								call/show reduce [prog] 
-								unview/only fl] 
-				[unview/only fl]
-	] [Alert "File must be compiled first!"]
+	if not exists? to-file exec [append console/text join exec " is not compiled!"]
+	if exists? to-file exec [if error? try [call/show reduce [to-local-file prog]] [Alert "Error in running file" ]]
+	show console
 	change-dir appDir
 ]
 
@@ -185,20 +187,19 @@ redInterpret: does [
 	change-dir to-file fPath
 	clear console/text
 	console/line-list: none
+	console/text: join "Running " [fname newline]
 	show console
-		if error? try [
-				str: join "Running " fname
-				rbuffer: copy ""
-				fl: flash str wait 0.1
-				either cb2/data 
-					[call/show/output reduce [join redExec[ " " sFName]] rbuffer]
-					[call/show reduce [join redExec[ " " sFName]]]
-				unview/only fl] 
-		[unview/only fl]
-	if cb2/data [
-		console/text: rbuffer
-		show console
-	]
+	; only red code can be interpreted
+	if fileType = "red" [
+		rbuffer: copy ""
+		either cb2/data 
+			[call/show/output reduce [join redExec[ " " sFName]] rbuffer]
+			[call/show reduce [join redExec[ " " sFName]]
+		]
+	]	
+	if cb2/data [append console/text rbuffer]
+	if fileType = "reds" [append console/text "Not a red program!"]
+	show console
 	change-dir appDir
 ]
 
@@ -511,10 +512,11 @@ resizeWindow: func [asize [pair!]] [
 aboutBox: layout [
 	styles windowStyles
     backcolor 101.98.95
-	space 0x15
 	across
 	app-info 200x48 "Red Editor Version 2.0" center wrap
 	return
+	app-info center 200 join currentOS " version"
+	return 
 	credits: app-info center 200x60 wrap
 	"Brought to the Red Language Community by F. Jouen (ldci)"
 	return

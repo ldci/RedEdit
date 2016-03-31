@@ -9,6 +9,13 @@ Mainly tested witn OSX and Windows.
 Of course, you can edit, compile, and run Red and Red/Sytem programs. 
 
 ##Red 0.60 compatibilty
+03/31/2016
+
+Updated version with a better support for windows.
+
+New samples (written by Nenad) are included: only for windows.
+
+
 03/30/2016
 
 Now compatible with Red 0.60 ! Thanks to Nénad and his team!
