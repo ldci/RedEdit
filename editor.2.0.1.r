@@ -52,25 +52,65 @@ ymax: 768; adapt accordng to your screen
 y1: ((ymax / 3) * 2)
 y2: (ymax / 3)
 
-; required diectories
-set 'appDir what-dir
-sourceDir: join appDir "template/"
-docDir: join appDir "doc/"
-binaryDir: join appDir "binaries/"
-empty: join sourceDir "basic.red"
-helperMaker: join docDir "makedoc2.r" 
-helperTxt: join docDir "red-system-specs.txt"
-helper: join docDir "red-system-specs.html"
+settings-file: to-file join pwd "settings.r"
+
+default-settings: make object! [
+    appDir: what-dir
+    sourceDir: join appDir "template/"
+    docDir: join appDir "doc/"
+    binaryDir: join appDir "binaries/"
+    empty: join sourceDir "basic.red"
+    helperMaker: join docDir "makedoc2.r"
+    helperTxt: join docDir "red-system-specs.txt"
+    helper: join docDir "red-system-specs.html"
+    redExec: none
+]
+
+settings: make default-settings [
+    load*: does [
+        if exists? settings-file [
+            do bind load settings-file self
+        ]
+    ]
+    diff: does [
+        diff: copy []
+        foreach key next first default-settings [
+            value: settings/(key)
+            if default-settings/(key) <> value [
+                append diff reduce [to-set-word key value]
+            ]
+        ]
+        diff
+    ]
+    save: does [
+        write settings-file mold diff
+    ]
+]
+
+; Cross compilation OS
+targets: ["Darwin" "Linux" "Linux-ARM" "RPi" "Windows" "MSDOS" "Syllable" "FreeBSD" "Android" "Android-x86"]
+getOs: does [
+	switch system/version/4 [
+		3 [os: "Windows" compilerTarget: targets/5 settings/redExec: "C:\Program Files (x86)\red\red.exe" ] ; join appDir "binaries/windows/red.exe"
+		2 [os: "Mac OS X" compilerTarget: targets/1 settings/redExec: "/usr/local/bin/red"] ;redExec: join appDir "binaries/osx/red"
+		4 [os: "Linux"  compilerTarget: targets/2 settings/redExec: "/usr/local/bin/red" ] ;join appDir "binaries/linux/red"
+	]
+	return os
+]
+ 	
+currentOS: GetOs
+
+settings/load*
 
 ; get help maker from Rebol website
-if not exists? helperMaker [ 
+if not exists? settings/helperMaker [ 
 	flash "Downloading makedoc2.r..."
-	read-thru/to http://www.rebol.org/library/scripts/makedoc2.r helperMaker
+	read-thru/to http://www.rebol.org/library/scripts/makedoc2.r settings/helperMaker
 	unview
 ]
 
-if not exists? helper  [do/args helperMaker helperTxt]
-change-dir appDir
+if not exists? settings/helper  [do/args settings/helperMaker settings/helperTxt]
+change-dir settings/appDir
 
 ; our variables
 ccok: false
@@ -108,18 +148,6 @@ windowStyles: stylize [
         	edge [size: 0x0] para [ origin: 6x2]
 ]
 
-; Cross compilation OS
-targets: ["Darwin" "Linux" "Linux-ARM" "RPi" "Windows" "MSDOS" "Syllable" "FreeBSD" "Android" "Android-x86"]
-getOs: does [
-	switch system/version/4 [
-		3 [os: "Windows" compilerTarget: targets/5 redExec: "C:\Program Files (x86)\red\red.exe" ] ; join appDir "binaries/windows/red.exe"
-		2 [os: "Mac OS X" compilerTarget: targets/1 redExec: "/usr/local/bin/red"] ;redExec: join appDir "binaries/osx/red"
-		4 [os: "Linux"  compilerTarget: targets/2 redExec: "/usr/local/bin/red" ] ;join appDir "binaries/linux/red"
-	]
-	return os
-]
- 	
-currentOS: GetOs
 ; default compiler arguments
 verboseLevel: 1
 maxVerbose: 2
@@ -131,59 +159,87 @@ quitRequested: does [
 	if (confirm/with "Really quit Red Editor ?" ["Yes" "No"]) [quit]
 ]
 
+findCompiler: does [
+    either exists? to-file settings/redExec [
+        settings/redExec
+    ] [
+        newExec: request-file/title/only "Find Red compiler" "Open"
+        if all [newExec exists? newExec] [
+            settings/redExec: to-string newExec
+            settings/save
+            settings/redExec
+        ]
+    ]
+]
+
+print-to-console: func [text /wipe] [
+    show console
+    if wipe [
+        clear console/text
+        console/line-list: none
+    ]
+    append console/text text
+    sl2/data: 1        
+    scroll-para console sl2
+    show [console sl2]
+]
+
 ; code compilation
 redCompile: does [
+    unless findCompiler [
+        print-to-console/wipe "Compiler file not found"
+        return
+    ]
 	ccok: false
-	clear console/text
-	console/line-list: none
-	console/text: join "Compiling " fname
-	show console
+	print-to-console/wipe: join "Compiling " fname
 	change-dir to-file fPath
 	wait 0.1
-	if error? try [
+	if error? err: try [
 			buffer: copy ""
 			cmdstr: join compilerArgs [" " sFName]
 			show console
-		    call/show/output reduce [redExec " " cmdstr] buffer
+		    call/show/output reduce [settings/redExec " " cmdstr] buffer
 			ccok: true 
-			] 
-			[ccok: false]
-	 either ccok [ 
-	 		append console/text buffer 
-	 		append console/text "Compilation, Linking and Buiding are done :)"
-	 ]
-	 [append console/text "Error in file processing "]
-	 sl2/data: 1        
-	 scroll-para console sl2
-	 show [console sl2]
-	 change-dir appDir
+    ] [ccok: false]
+    
+    either ccok [ 
+        print-to-console buffer
+        print-to-console "Compilation, Linking and Buiding are done :)"
+    ] [
+        print-to-console "Error in file processing: "
+        print-to-console mold disarm err
+    ]
+    change-dir settings/appDir
 ]
 
 
 ; execute compiled code
 redRun: does [
 	; compilation OK?
-	clear console/text
-	console/line-list: none
 	tmp: parse sFName "."
 	exec: first tmp
-	console/text: join "Loading " [exec newline]
+    print-to-console/wipe join "Loading " [exec newline]
 	; with mac and linux  "open" allows a new terminal
 	if currentOS = "Mac OS X" [prog: join "open " exec]
-	if currentOS = "Linux" [prog: join "open " exec]
+	if currentOS = "Linux" [prog: join settings/sourceDir [exec]]
 	; windows equivalent to "open"
 	if currentOS = "Windows" [append exec ".exe" prog: rejoin [{START ""} { "} exec {"}] ]
 	show console
 	wait 0.1
 	change-dir to-file fPath
-	if not exists? to-file exec [append console/text join exec " is not compiled!"]
-	if exists? to-file exec [if error? try [call/show reduce [to-local-file prog]] [Alert "Error in running file" ]]
+	if not exists? to-file exec [print-to-console join exec " is not compiled!"]
+    output: copy ""
+	if exists? to-file exec [if error? err: try [call/show/output reduce [to-local-file prog] output] [Alert "Error in running file" ]]
+    unless empty? output [
+        print-to-console output
+    ]
 	show console
-	change-dir appDir
+	change-dir settings/appDir
 ]
 
 ; call Red interpreter
 redInterpret: does [
+    print "interpret"
 	change-dir to-file fPath
 	clear console/text
 	console/line-list: none
@@ -193,14 +249,14 @@ redInterpret: does [
 	if fileType = "red" [
 		rbuffer: copy ""
 		either cb2/data 
-			[call/show/output reduce [join redExec[ " " sFName]] rbuffer]
-			[call/show reduce [join redExec[ " " sFName]]
+			[call/show/output reduce [join settings/redExec [ " " sFName]] rbuffer]
+			[call/show reduce [join settings/redExec [ " " sFName]]
 		]
 	]	
 	if cb2/data [append console/text rbuffer]
 	if fileType = "reds" [append console/text "Not a red program!"]
 	show console
-	change-dir appDir
+	change-dir settings/appDir
 ]
 
 ; number of pages in file
@@ -383,8 +439,8 @@ updateRead: does [
 ; create new file
 newFile: does [
 	ccok: false
-	afile: to-file empty
-	fname: empty
+	afile: to-file settings/empty
+	fname: settings/empty
 	readFile
 	updateRead 
 	getFileInfo
@@ -531,6 +587,9 @@ optionsBox: layout [
 	across
 	app-info 200x24 "Red Compiler Preferences" left wrap
 	return
+    app-info 200 "Compiler path" left wrap
+    app-btn "Set" [ compiler-path: request-file ]
+    return
 	app-info 80 "Target" tgr: drop-down data targets [compilerTarget: face/text]
 	return
 	app-info 80 "Debugger" 
@@ -557,6 +616,7 @@ optionsBox: layout [
  	        if r1/data  [append compilerArgs "-d "]
  	        if r3/data [append compilerArgs join "-v " [verboseLevel " "]]
  	        if cb1/data [ append compilerArgs "-dlib "]
+            if all [value? 'compiler-path compiler-path] [ settings/redExec: compiler-path ]
  	        append compilerArgs join "-t " compilerTarget
  			hide-popup] 
 ]
@@ -598,7 +658,7 @@ mainWin: layout [
 	b71: app-btn 65 keycode [#"^i"] "Interpret" [if tnFiles > 0 [redInterpret]]
 	b8:  app-btn 60 keycode [#"^p"]  "comPile" [if tnFiles > 0 [redCompile]]
 	b9:  app-btn 60  keycode [#"^r"] "Run" [if tnFiles > 0 [redRun]]
-	b10:  app-btn 50 "Help" [if error? try [browse/only helper] [alert "Unsupported browser"]]
+	b10:  app-btn 50 "Help" [if error? try [browse/only settings/helper] [alert "Unsupported browser"]]
 	b11:  app-btn 50"About" [ if error? try [inform/title aboutBox "About"] [inform aboutBox]]                                      
 	b12:  app-btn 50 keycode [#"^q"] "Quit" [quitRequested]
 	at 200x35 bx: box  as-pair (35) (lineHeight + 4) effect [draw lcursor] 
